@@ -12,6 +12,8 @@ type Profile struct {
 	ServerName  string `json:"server_name,omitempty"` // NOTSPEC: only set by Pinecone user provider
 	DisplayName string `json:"display_name"`
 	AvatarURL   string `json:"avatar_url"`
+	// AccountType   userapi.AccountType `json:"account_type"`
+	// ParentAccount string              `json:"parent_account"`
 }
 
 // FullyQualifiedProfile represents the profile for a Matrix account.

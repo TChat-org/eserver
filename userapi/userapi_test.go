@@ -151,7 +151,7 @@ func TestQueryProfile(t *testing.T) {
 	test.WithAllDatabases(t, func(t *testing.T, dbType test.DBType) {
 		userAPI, accountDB, close := MustMakeInternalAPI(t, apiTestOpts{}, dbType, nil)
 		defer close()
-		_, err := accountDB.CreateAccount(context.TODO(), "alice", serverName, "foobar", "", api.AccountTypeUser)
+		_, err := accountDB.CreateAccount(context.TODO(), "alice", serverName, "foobar", "", api.AccountTypeUser, "")
 		if err != nil {
 			t.Fatalf("failed to make account: %s", err)
 		}
@@ -174,7 +174,7 @@ func TestPasswordlessLoginFails(t *testing.T) {
 	test.WithAllDatabases(t, func(t *testing.T, dbType test.DBType) {
 		userAPI, accountDB, close := MustMakeInternalAPI(t, apiTestOpts{}, dbType, nil)
 		defer close()
-		_, err := accountDB.CreateAccount(ctx, "auser", serverName, "", "", api.AccountTypeAppService)
+		_, err := accountDB.CreateAccount(ctx, "auser", serverName, "", "", api.AccountTypeAppService, "")
 		if err != nil {
 			t.Fatalf("failed to make account: %s", err)
 		}
@@ -200,7 +200,7 @@ func TestLoginToken(t *testing.T) {
 		test.WithAllDatabases(t, func(t *testing.T, dbType test.DBType) {
 			userAPI, accountDB, close := MustMakeInternalAPI(t, apiTestOpts{}, dbType, nil)
 			defer close()
-			_, err := accountDB.CreateAccount(ctx, "auser", serverName, "apassword", "", api.AccountTypeUser)
+			_, err := accountDB.CreateAccount(ctx, "auser", serverName, "apassword", "", api.AccountTypeUser, "")
 			if err != nil {
 				t.Fatalf("failed to make account: %s", err)
 			}
@@ -325,7 +325,7 @@ func TestQueryAccountByLocalpart(t *testing.T) {
 		intAPI, db, close := MustMakeInternalAPI(t, apiTestOpts{}, dbType, nil)
 		defer close()
 
-		createdAcc, err := db.CreateAccount(ctx, localpart, userServername, "", "", alice.AccountType)
+		createdAcc, err := db.CreateAccount(ctx, localpart, userServername, "", "", alice.AccountType, "")
 		if err != nil {
 			t.Error(err)
 		}

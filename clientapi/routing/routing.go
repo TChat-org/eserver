@@ -535,6 +535,15 @@ func Setup(
 		return Register(req, userAPI, cfg)
 	})).Methods(http.MethodPost, http.MethodOptions)
 
+	v3mux.Handle("/create_account",
+		httputil.MakeAuthAPI("create_account", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
+			if r := rateLimits.Limit(req, device); r != nil {
+				return *r
+			}
+			return CreateAccount(req, device, userAPI, cfg)
+		}),
+	).Methods(http.MethodPost, http.MethodOptions)
+
 	v3mux.Handle("/register/available", httputil.MakeExternalAPI("registerAvailable", func(req *http.Request) util.JSONResponse {
 		if r := rateLimits.Limit(req, nil); r != nil {
 			return *r
@@ -720,7 +729,7 @@ func Setup(
 			if r := rateLimits.Limit(req, nil); r != nil {
 				return *r
 			}
-			return Login(req, userAPI, cfg)
+			return Login(req, cfg, userAPI, rsAPI, asAPI)
 		}),
 	).Methods(http.MethodGet, http.MethodPost, http.MethodOptions)
 
@@ -869,24 +878,48 @@ func Setup(
 
 	// Element user settings
 
+	// v3mux.Handle("/profile/{userID}",
+	// 	httputil.MakeExternalAPI("profile", func(req *http.Request) util.JSONResponse {
+	// 		vars, err := httputil.URLDecodeMapValues(mux.Vars(req))
+	// 		if err != nil {
+	// 			return util.ErrorResponse(err)
+	// 		}
+	// 		return GetProfile(req, userAPI, cfg, vars["userID"], asAPI, federation)
+	// 	}),
+	// ).Methods(http.MethodGet, http.MethodOptions)
 	v3mux.Handle("/profile/{userID}",
-		httputil.MakeExternalAPI("profile", func(req *http.Request) util.JSONResponse {
+		httputil.MakeAuthAPI("profile", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
+			if r := rateLimits.Limit(req, device); r != nil {
+				return *r
+			}
 			vars, err := httputil.URLDecodeMapValues(mux.Vars(req))
 			if err != nil {
 				return util.ErrorResponse(err)
 			}
-			return GetProfile(req, userAPI, cfg, vars["userID"], asAPI, federation)
-		}),
+			return GetProfile(req, device, userAPI, cfg, vars["userID"], asAPI, federation)
+		}, httputil.WithAllowGuests()),
 	).Methods(http.MethodGet, http.MethodOptions)
 
+	// v3mux.Handle("/profile/{userID}/avatar_url",
+	// 	httputil.MakeExternalAPI("profile_avatar_url", func(req *http.Request) util.JSONResponse {
+	// 		vars, err := httputil.URLDecodeMapValues(mux.Vars(req))
+	// 		if err != nil {
+	// 			return util.ErrorResponse(err)
+	// 		}
+	// 		return GetAvatarURL(req, userAPI, cfg, vars["userID"], asAPI, federation)
+	// 	}),
+	// ).Methods(http.MethodGet, http.MethodOptions)
 	v3mux.Handle("/profile/{userID}/avatar_url",
-		httputil.MakeExternalAPI("profile_avatar_url", func(req *http.Request) util.JSONResponse {
+		httputil.MakeAuthAPI("profile_avatar_url", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
+			if r := rateLimits.Limit(req, device); r != nil {
+				return *r
+			}
 			vars, err := httputil.URLDecodeMapValues(mux.Vars(req))
 			if err != nil {
 				return util.ErrorResponse(err)
 			}
-			return GetAvatarURL(req, userAPI, cfg, vars["userID"], asAPI, federation)
-		}),
+			return GetAvatarURL(req, device, userAPI, cfg, vars["userID"], asAPI, federation)
+		}, httputil.WithAllowGuests()),
 	).Methods(http.MethodGet, http.MethodOptions)
 
 	v3mux.Handle("/profile/{userID}/avatar_url",
@@ -904,14 +937,26 @@ func Setup(
 	// Browsers use the OPTIONS HTTP method to check if the CORS policy allows
 	// PUT requests, so we need to allow this method
 
+	// v3mux.Handle("/profile/{userID}/displayname",
+	// 	httputil.MakeExternalAPI("profile_displayname", func(req *http.Request) util.JSONResponse {
+	// 		vars, err := httputil.URLDecodeMapValues(mux.Vars(req))
+	// 		if err != nil {
+	// 			return util.ErrorResponse(err)
+	// 		}
+	// 		return GetDisplayName(req, userAPI, cfg, vars["userID"], asAPI, federation)
+	// 	}),
+	// ).Methods(http.MethodGet, http.MethodOptions)
 	v3mux.Handle("/profile/{userID}/displayname",
-		httputil.MakeExternalAPI("profile_displayname", func(req *http.Request) util.JSONResponse {
+		httputil.MakeAuthAPI("profile_displayname", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
+			if r := rateLimits.Limit(req, device); r != nil {
+				return *r
+			}
 			vars, err := httputil.URLDecodeMapValues(mux.Vars(req))
 			if err != nil {
 				return util.ErrorResponse(err)
 			}
-			return GetDisplayName(req, userAPI, cfg, vars["userID"], asAPI, federation)
-		}),
+			return GetDisplayName(req, device, userAPI, cfg, vars["userID"], asAPI, federation)
+		}, httputil.WithAllowGuests()),
 	).Methods(http.MethodGet, http.MethodOptions)
 
 	v3mux.Handle("/profile/{userID}/displayname",

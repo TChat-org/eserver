@@ -39,6 +39,7 @@ import (
 	"github.com/element-hq/dendrite/clientapi/auth/authtypes"
 	"github.com/element-hq/dendrite/clientapi/httputil"
 	"github.com/element-hq/dendrite/clientapi/userutil"
+	"github.com/element-hq/dendrite/userapi/api"
 	userapi "github.com/element-hq/dendrite/userapi/api"
 )
 
@@ -216,6 +217,8 @@ type registerRequest struct {
 	// Application Services place Type in the root of their registration
 	// request, whereas clients place it in the authDict struct.
 	Type authtypes.LoginType `json:"type"`
+
+	ParentAccount string `json:"parent_account"`
 }
 
 type authDict struct {
@@ -559,11 +562,120 @@ func Register(
 		return *internal.PasswordResponse(err)
 	}
 
+	r.ParentAccount = ""
+
 	logger := util.GetLogger(req.Context())
 	logger.WithFields(log.Fields{
-		"username":   r.Username,
-		"auth.type":  r.Auth.Type,
-		"session_id": r.Auth.Session,
+		"username":       r.Username,
+		"auth.type":      r.Auth.Type,
+		"session_id":     r.Auth.Session,
+		"parrentAccount": r.ParentAccount,
+	}).Info("Processing registration request")
+
+	return handleRegistrationFlow(req, r, sessionID, cfg, userAPI, accessToken, accessTokenErr)
+}
+
+// Create temp account /create_account request
+func CreateAccount(
+	req *http.Request,
+	device *api.Device,
+	userAPI userapi.ClientUserAPI,
+	cfg *config.ClientAPI,
+) util.JSONResponse {
+	if device.AccountType == userapi.AccountTypeTempUser {
+		return util.JSONResponse{
+			Code: http.StatusForbidden,
+			JSON: spec.NotJSON("This account type cannot perform this action"),
+		}
+	}
+
+	defer req.Body.Close() // nolint: errcheck
+	reqBody, err := io.ReadAll(req.Body)
+	if err != nil {
+		return util.JSONResponse{
+			Code: http.StatusBadRequest,
+			JSON: spec.NotJSON("Unable to read request body"),
+		}
+	}
+
+	var r registerRequest
+	host := spec.ServerName(req.Host)
+	if v := cfg.Matrix.VirtualHostForHTTPHost(host); v != nil {
+		r.ServerName = v.ServerName
+	} else {
+		r.ServerName = cfg.Matrix.ServerName
+	}
+	sessionID := gjson.GetBytes(reqBody, "auth.session").String()
+	if sessionID == "" {
+		// Generate a new, random session ID
+		sessionID = util.RandomString(sessionIDLength)
+	} else if data, ok := sessions.getParams(sessionID); ok {
+		// Use the parameters from the session as our defaults.
+		// Some of these might end up being overwritten if the
+		// values are specified again in the request body.
+		r.Username = data.Username
+		r.ServerName = data.ServerName
+		r.Password = data.Password
+		r.DeviceID = data.DeviceID
+		r.InitialDisplayName = data.InitialDisplayName
+		r.InhibitLogin = data.InhibitLogin
+		// Check if the user already registered using this session, if so, return that result
+		if response, ok := sessions.getCompletedRegistration(sessionID); ok {
+			return util.JSONResponse{
+				Code: http.StatusOK,
+				JSON: response,
+			}
+		}
+	}
+	if resErr := httputil.UnmarshalJSON(reqBody, &r); resErr != nil {
+		return *resErr
+	}
+	if req.URL.Query().Get("kind") == "guest" {
+		return handleGuestRegistration(req, r, cfg, userAPI)
+	}
+
+	// Don't allow numeric usernames less than MAX_INT64.
+	if _, err = strconv.ParseInt(r.Username, 10, 64); err == nil {
+		return util.JSONResponse{
+			Code: http.StatusBadRequest,
+			JSON: spec.InvalidUsername("Numeric user IDs are reserved"),
+		}
+	}
+	// Auto generate a numeric username if r.Username is empty
+	if r.Username == "" {
+		nreq := &userapi.QueryNumericLocalpartRequest{
+			ServerName: r.ServerName,
+		}
+		nres := &userapi.QueryNumericLocalpartResponse{}
+		if err = userAPI.QueryNumericLocalpart(req.Context(), nreq, nres); err != nil {
+			util.GetLogger(req.Context()).WithError(err).Error("userAPI.QueryNumericLocalpart failed")
+			return util.JSONResponse{
+				Code: http.StatusInternalServerError,
+				JSON: spec.InternalServerError{},
+			}
+		}
+		r.Username = strconv.FormatInt(nres.ID, 10)
+	}
+
+	accessToken, accessTokenErr := auth.ExtractAccessToken(req)
+
+	// Squash username to all lowercase letters
+	r.Username = strings.ToLower(r.Username)
+	if err = internal.ValidateUsername(r.Username, r.ServerName); err != nil {
+		return *internal.UsernameResponse(err)
+	}
+	if err = internal.ValidatePassword(r.Password); err != nil {
+		return *internal.PasswordResponse(err)
+	}
+
+	r.ParentAccount = device.UserID
+
+	logger := util.GetLogger(req.Context())
+	logger.WithFields(log.Fields{
+		"username":      r.Username,
+		"auth.type":     r.Auth.Type,
+		"session_id":    r.Auth.Session,
+		"parentAccount": r.ParentAccount,
 	}).Info("Processing registration request")
 
 	return handleRegistrationFlow(req, r, sessionID, cfg, userAPI, accessToken, accessTokenErr)
@@ -669,6 +781,14 @@ func handleRegistrationFlow(
 	// TODO: Handle mapping registrationRequest parameters into session parameters
 
 	// TODO: email / msisdn auth types.
+
+	logger := util.GetLogger(req.Context())
+	logger.WithFields(log.Fields{
+		"username":       r.Username,
+		"auth.type":      r.Auth.Type,
+		"session_id":     r.Auth.Session,
+		"parrentAccount": r.ParentAccount,
+	}).Info("[handleRegistrationFlow] called")
 
 	// Appservices are special and are not affected by disabled
 	// registration or user exclusivity. We'll go onto the appservice
@@ -788,7 +908,7 @@ func handleApplicationServiceRegistration(
 	return completeRegistration(
 		req.Context(), userAPI, r.Username, r.ServerName, "", "", appserviceID, req.RemoteAddr,
 		req.UserAgent(), r.Auth.Session, r.InhibitLogin, r.InitialDisplayName, r.DeviceID,
-		userapi.AccountTypeAppService,
+		userapi.AccountTypeAppService, "",
 	)
 }
 
@@ -803,12 +923,28 @@ func checkAndCompleteFlow(
 	cfg *config.ClientAPI,
 	userAPI userapi.ClientUserAPI,
 ) util.JSONResponse {
+
+	logger := util.GetLogger(req.Context())
+	logger.WithFields(log.Fields{
+		"username":       r.Username,
+		"auth.type":      r.Auth.Type,
+		"session_id":     r.Auth.Session,
+		"parrentAccount": r.ParentAccount,
+	}).Info("[checkAndCompleteFlow] called")
+
 	if checkFlowCompleted(flow, cfg.Derived.Registration.Flows) {
+		accType := userapi.AccountTypeUser
+		if r.ParentAccount != "" {
+			accType = userapi.AccountTypeTempUser
+		}
+		logger.WithFields(log.Fields{
+			"accType": accType,
+		}).Info("[checkAndCompleteFlow] checkFlowCompleted ok")
 		// This flow was completed, registration can continue
 		return completeRegistration(
 			req.Context(), userAPI, r.Username, r.ServerName, "", r.Password, "", req.RemoteAddr,
 			req.UserAgent(), sessionID, r.InhibitLogin, r.InitialDisplayName, r.DeviceID,
-			userapi.AccountTypeUser,
+			accType, r.ParentAccount,
 		)
 	}
 	sessions.addParams(sessionID, r)
@@ -835,7 +971,16 @@ func completeRegistration(
 	inhibitLogin eventutil.WeakBoolean,
 	deviceDisplayName, deviceID *string,
 	accType userapi.AccountType,
+	parentAccount string,
 ) util.JSONResponse {
+	logger := util.GetLogger(ctx)
+	logger.WithFields(log.Fields{
+		"username":      username,
+		"password":      password,
+		"accType":       accType,
+		"parentAccount": parentAccount,
+	}).Info("[completeRegistration] called")
+
 	if username == "" {
 		return util.JSONResponse{
 			Code: http.StatusBadRequest,
@@ -851,12 +996,13 @@ func completeRegistration(
 	}
 	var accRes userapi.PerformAccountCreationResponse
 	err := userAPI.PerformAccountCreation(ctx, &userapi.PerformAccountCreationRequest{
-		AppServiceID: appserviceID,
-		Localpart:    username,
-		ServerName:   serverName,
-		Password:     password,
-		AccountType:  accType,
-		OnConflict:   userapi.ConflictAbort,
+		AppServiceID:  appserviceID,
+		Localpart:     username,
+		ServerName:    serverName,
+		Password:      password,
+		AccountType:   accType,
+		ParentAccount: parentAccount,
+		OnConflict:    userapi.ConflictAbort,
 	}, &accRes)
 	if err != nil {
 		if _, ok := err.(*userapi.ErrorConflict); ok { // user already exists
@@ -1094,5 +1240,5 @@ func handleSharedSecretRegistration(cfg *config.ClientAPI, userAPI userapi.Clien
 	if ssrr.Admin {
 		accType = userapi.AccountTypeAdmin
 	}
-	return completeRegistration(req.Context(), userAPI, ssrr.User, cfg.Matrix.ServerName, ssrr.DisplayName, ssrr.Password, "", req.RemoteAddr, req.UserAgent(), "", false, &ssrr.User, &deviceID, accType)
+	return completeRegistration(req.Context(), userAPI, ssrr.User, cfg.Matrix.ServerName, ssrr.DisplayName, ssrr.Password, "", req.RemoteAddr, req.UserAgent(), "", false, &ssrr.User, &deviceID, accType, "")
 }

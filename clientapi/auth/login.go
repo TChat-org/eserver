@@ -8,6 +8,7 @@ package auth
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -49,6 +50,8 @@ func LoginFromJSONReader(
 		return nil, nil, err
 	}
 
+	fmt.Println("[clientapi/auth/login.go][LoginFromJSONReader] header.Type = ", header.Type)
+
 	var typ Type
 	switch header.Type {
 	case authtypes.LoginTypePassword:
@@ -82,6 +85,8 @@ func LoginFromJSONReader(
 		}
 		return nil, nil, &err
 	}
+
+	fmt.Println("[clientapi/auth/login.go][LoginFromJSONReader] calling LoginFromJSON")
 
 	return typ.LoginFromJSON(req.Context(), reqBytes)
 }

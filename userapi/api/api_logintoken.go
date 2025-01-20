@@ -36,6 +36,9 @@ type LoginTokenInternalAPI interface {
 type LoginTokenData struct {
 	// UserID is the full mxid of the user.
 	UserID string
+
+	AccountType   AccountType
+	ParentAccount string
 }
 
 // LoginTokenMetadata contains metadata created and maintained by the User API.

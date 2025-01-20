@@ -36,8 +36,10 @@ CREATE TABLE IF NOT EXISTS userapi_accounts (
     appservice_id TEXT,
     -- If the account is currently active
     is_deactivated BOOLEAN DEFAULT FALSE,
-	-- The account_type (user = 1, guest = 2, admin = 3, appservice = 4)
-	account_type SMALLINT NOT NULL
+	-- The account_type (user = 1, guest = 2, admin = 3, appservice = 4, tempuser = 5)
+	account_type SMALLINT NOT NULL,
+	-- The account that created this account
+	parent_account TEXT
     -- TODO:
     -- upgraded_ts, devices, any email reset stuff?
 );
@@ -46,7 +48,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS userapi_accounts_idx ON userapi_accounts(local
 `
 
 const insertAccountSQL = "" +
-	"INSERT INTO userapi_accounts(localpart, server_name, created_ts, password_hash, appservice_id, account_type) VALUES ($1, $2, $3, $4, $5, $6)"
+	"INSERT INTO userapi_accounts(localpart, server_name, created_ts, password_hash, appservice_id, account_type, parent_account) VALUES ($1, $2, $3, $4, $5, $6, $7)"
 
 const updatePasswordSQL = "" +
 	"UPDATE userapi_accounts SET password_hash = $1 WHERE localpart = $2 AND server_name = $3"
@@ -55,7 +57,7 @@ const deactivateAccountSQL = "" +
 	"UPDATE userapi_accounts SET is_deactivated = TRUE WHERE localpart = $1 AND server_name = $2"
 
 const selectAccountByLocalpartSQL = "" +
-	"SELECT localpart, server_name, appservice_id, account_type FROM userapi_accounts WHERE localpart = $1 AND server_name = $2"
+	"SELECT localpart, server_name, appservice_id, account_type, parent_account FROM userapi_accounts WHERE localpart = $1 AND server_name = $2"
 
 const selectPasswordHashSQL = "" +
 	"SELECT password_hash FROM userapi_accounts WHERE localpart = $1 AND server_name = $2 AND is_deactivated = FALSE"
@@ -115,26 +117,28 @@ func (s *accountsStatements) InsertAccount(
 	ctx context.Context, txn *sql.Tx,
 	localpart string, serverName spec.ServerName,
 	hash, appserviceID string, accountType api.AccountType,
+	parentAccount string,
 ) (*api.Account, error) {
 	createdTimeMS := time.Now().UnixNano() / 1000000
 	stmt := sqlutil.TxStmt(txn, s.insertAccountStmt)
 
 	var err error
 	if accountType != api.AccountTypeAppService {
-		_, err = stmt.ExecContext(ctx, localpart, serverName, createdTimeMS, hash, nil, accountType)
+		_, err = stmt.ExecContext(ctx, localpart, serverName, createdTimeMS, hash, nil, accountType, parentAccount)
 	} else {
-		_, err = stmt.ExecContext(ctx, localpart, serverName, createdTimeMS, hash, appserviceID, accountType)
+		_, err = stmt.ExecContext(ctx, localpart, serverName, createdTimeMS, hash, appserviceID, accountType, parentAccount)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("insertAccountStmt: %w", err)
 	}
 
 	return &api.Account{
-		Localpart:    localpart,
-		UserID:       userutil.MakeUserID(localpart, serverName),
-		ServerName:   serverName,
-		AppServiceID: appserviceID,
-		AccountType:  accountType,
+		Localpart:     localpart,
+		UserID:        userutil.MakeUserID(localpart, serverName),
+		ServerName:    serverName,
+		AppServiceID:  appserviceID,
+		AccountType:   accountType,
+		ParentAccount: parentAccount,
 	}, nil
 }
 
@@ -167,7 +171,7 @@ func (s *accountsStatements) SelectAccountByLocalpart(
 	var acc api.Account
 
 	stmt := s.selectAccountByLocalpartStmt
-	err := stmt.QueryRowContext(ctx, localpart, serverName).Scan(&acc.Localpart, &acc.ServerName, &appserviceIDPtr, &acc.AccountType)
+	err := stmt.QueryRowContext(ctx, localpart, serverName).Scan(&acc.Localpart, &acc.ServerName, &appserviceIDPtr, &acc.AccountType, &acc.ParentAccount)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			log.WithError(err).Error("Unable to retrieve user from the db")

@@ -90,7 +90,7 @@ func Test_Accounts(t *testing.T) {
 		aliceLocalpart, aliceDomain, err := gomatrixserverlib.SplitID('@', alice.ID)
 		assert.NoError(t, err)
 
-		accAlice, err := db.CreateAccount(ctx, aliceLocalpart, aliceDomain, "testing", "", api.AccountTypeAdmin)
+		accAlice, err := db.CreateAccount(ctx, aliceLocalpart, aliceDomain, "testing", "", api.AccountTypeAdmin, "")
 		assert.NoError(t, err, "failed to create account")
 		// verify the newly create account is the same as returned by CreateAccount
 		var accGet *api.Account
@@ -114,7 +114,7 @@ func Test_Accounts(t *testing.T) {
 		first, err := db.GetNewNumericLocalpart(ctx, aliceDomain)
 		assert.NoError(t, err, "failed to get new numeric localpart")
 		// Create a new account to verify the numeric localpart is updated
-		_, err = db.CreateAccount(ctx, "", aliceDomain, "testing", "", api.AccountTypeGuest)
+		_, err = db.CreateAccount(ctx, "", aliceDomain, "testing", "", api.AccountTypeGuest, "")
 		assert.NoError(t, err, "failed to create account")
 		second, err := db.GetNewNumericLocalpart(ctx, aliceDomain)
 		assert.NoError(t, err)
@@ -139,19 +139,19 @@ func Test_Accounts(t *testing.T) {
 
 		// create an empty localpart; this should never happen, but is required to test getting a numeric localpart
 		// if there's already a user without a localpart in the database
-		_, err = db.CreateAccount(ctx, "", aliceDomain, "", "", api.AccountTypeUser)
+		_, err = db.CreateAccount(ctx, "", aliceDomain, "", "", api.AccountTypeUser, "")
 		assert.NoError(t, err)
 
 		// test getting a numeric localpart, with an existing user without a localpart
-		_, err = db.CreateAccount(ctx, "", aliceDomain, "", "", api.AccountTypeGuest)
+		_, err = db.CreateAccount(ctx, "", aliceDomain, "", "", api.AccountTypeGuest, "")
 		assert.NoError(t, err)
 
 		// Create a user with a high numeric localpart, out of range for the Postgres integer (2147483647) type
-		_, err = db.CreateAccount(ctx, "2147483650", aliceDomain, "", "", api.AccountTypeUser)
+		_, err = db.CreateAccount(ctx, "2147483650", aliceDomain, "", "", api.AccountTypeUser, "")
 		assert.NoError(t, err)
 
 		// Now try to create a new guest user
-		_, err = db.CreateAccount(ctx, "", aliceDomain, "", "", api.AccountTypeGuest)
+		_, err = db.CreateAccount(ctx, "", aliceDomain, "", "", api.AccountTypeGuest, "")
 		assert.NoError(t, err)
 	})
 }
@@ -378,7 +378,7 @@ func Test_Profile(t *testing.T) {
 		defer close()
 
 		// create account, which also creates a profile
-		_, err = db.CreateAccount(ctx, aliceLocalpart, aliceDomain, "testing", "", api.AccountTypeAdmin)
+		_, err = db.CreateAccount(ctx, aliceLocalpart, aliceDomain, "testing", "", api.AccountTypeAdmin, "")
 		assert.NoError(t, err, "failed to create account")
 
 		gotProfile, err := db.GetProfileByLocalpart(ctx, aliceLocalpart, aliceDomain)

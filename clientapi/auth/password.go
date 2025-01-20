@@ -8,6 +8,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -47,6 +48,8 @@ func (t *LoginTypePassword) LoginFromJSON(ctx context.Context, reqBytes []byte) 
 	if err != nil {
 		return nil, nil, err
 	}
+
+	fmt.Println("[clientapi/auth/password.go][LoginFromJSON] login = ", login)
 
 	return login, func(context.Context, *util.JSONResponse) {}, nil
 }
@@ -119,5 +122,12 @@ func (t *LoginTypePassword) Login(ctx context.Context, req interface{}) (*Login,
 	// Set the user, so login.Username() can do the right thing
 	r.Identifier.User = res.Account.UserID
 	r.User = res.Account.UserID
+	r.Identifier.AccountType = res.Account.AccountType
+	r.Identifier.ParentAccount = res.Account.ParentAccount
+
+	fmt.Println("[clientapi/auth/password.go][LoginFromJSON] r.Identifier.User = ", r.Identifier.User)
+	fmt.Println("[clientapi/auth/password.go][LoginFromJSON] r.Identifier.AccountType = ", r.Identifier.AccountType)
+	fmt.Println("[clientapi/auth/password.go][LoginFromJSON] r.Identifier.ParentAccount = ", r.Identifier.ParentAccount)
+
 	return &r.Login, nil
 }

@@ -64,7 +64,7 @@ func TestJoinRoomByIDOrAlias(t *testing.T) {
 		charlieDev := &uapi.Device{UserID: charlie.ID, AccountType: uapi.AccountTypeGuest}
 
 		// create a room with disabled guest access and invite Bob
-		resp := createRoom(ctx, createRoomRequest{
+		resp, _ := createRoom(ctx, createRoomRequest{
 			Name:          "testing",
 			IsDirect:      true,
 			Topic:         "testing",
@@ -79,7 +79,7 @@ func TestJoinRoomByIDOrAlias(t *testing.T) {
 		}
 
 		// create a room with guest access enabled and invite Charlie
-		resp = createRoom(ctx, createRoomRequest{
+		resp, _ = createRoom(ctx, createRoomRequest{
 			Name:       "testing",
 			IsDirect:   true,
 			Topic:      "testing",

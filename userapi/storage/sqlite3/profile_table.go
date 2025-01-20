@@ -37,7 +37,13 @@ const insertProfileSQL = "" +
 	"INSERT INTO userapi_profiles(localpart, server_name, display_name, avatar_url) VALUES ($1, $2, $3, $4)"
 
 const selectProfileByLocalpartSQL = "" +
-	"SELECT localpart, server_name, display_name, avatar_url FROM userapi_profiles WHERE localpart = $1 AND server_name = $2"
+	"SELECT localpart, server_name, display_name, avatar_url, FROM userapi_profiles WHERE localpart = $1 AND server_name = $2"
+
+// const selectProfileByLocalpartSQL = "" +
+// 	"SELECT t1.localpart as localpart, t1.server_name as server_name, t1.display_name as display_name, t1.avatar_url as avatar_url, t2.account_type as account_type, t2.parent_account as parent_account" +
+// 	" FROM userapi_profiles t1" +
+// 	" JOIN userapi_accounts t2 ON t1.localpart = t2.localpart AND t1.server_name = t2.server_name" +
+// 	" WHERE t1.localpart = $1 AND t1.server_name = $2;"
 
 const setAvatarURLSQL = "" +
 	"UPDATE userapi_profiles SET avatar_url = $1 WHERE localpart = $2 AND server_name = $3" +
@@ -91,6 +97,9 @@ func (s *profilesStatements) SelectProfileByLocalpart(
 	localpart string, serverName spec.ServerName,
 ) (*authtypes.Profile, error) {
 	var profile authtypes.Profile
+	// err := s.selectProfileByLocalpartStmt.QueryRowContext(ctx, localpart, serverName).Scan(
+	// 	&profile.Localpart, &profile.ServerName, &profile.DisplayName, &profile.AvatarURL, &profile.AccountType, &profile.ParentAccount,
+	// )
 	err := s.selectProfileByLocalpartStmt.QueryRowContext(ctx, localpart, serverName).Scan(
 		&profile.Localpart, &profile.ServerName, &profile.DisplayName, &profile.AvatarURL,
 	)

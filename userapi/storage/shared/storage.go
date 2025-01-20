@@ -184,7 +184,7 @@ func (d *Database) SetPassword(
 // account already exists, it will return nil, ErrUserExists.
 func (d *Database) CreateAccount(
 	ctx context.Context, localpart string, serverName spec.ServerName,
-	plaintextPassword, appserviceID string, accountType api.AccountType,
+	plaintextPassword, appserviceID string, accountType api.AccountType, parentAccount string,
 ) (acc *api.Account, err error) {
 	err = d.Writer.Do(d.DB, nil, func(txn *sql.Tx) error {
 		// For guest accounts, we create a new numeric local part
@@ -198,7 +198,7 @@ func (d *Database) CreateAccount(
 			plaintextPassword = ""
 			appserviceID = ""
 		}
-		acc, err = d.createAccount(ctx, txn, localpart, serverName, plaintextPassword, appserviceID, accountType)
+		acc, err = d.createAccount(ctx, txn, localpart, serverName, plaintextPassword, appserviceID, accountType, parentAccount)
 		return err
 	})
 	return
@@ -210,6 +210,7 @@ func (d *Database) createAccount(
 	ctx context.Context, txn *sql.Tx,
 	localpart string, serverName spec.ServerName,
 	plaintextPassword, appserviceID string, accountType api.AccountType,
+	parentAccount string,
 ) (*api.Account, error) {
 	var err error
 	var account *api.Account
@@ -221,8 +222,9 @@ func (d *Database) createAccount(
 			return nil, err
 		}
 	}
-	if account, err = d.Accounts.InsertAccount(ctx, txn, localpart, serverName, hash, appserviceID, accountType); err != nil {
-		return nil, sqlutil.ErrUserExists
+	if account, err = d.Accounts.InsertAccount(ctx, txn, localpart, serverName, hash, appserviceID, accountType, parentAccount); err != nil {
+		// return nil, sqlutil.ErrUserExists
+		return nil, err
 	}
 	if err = d.Profiles.InsertProfile(ctx, txn, localpart, serverName); err != nil {
 		return nil, fmt.Errorf("d.Profiles.InsertProfile: %w", err)

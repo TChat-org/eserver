@@ -161,7 +161,7 @@ func SendServerNotice(
 			PowerLevelContentOverride: pl,
 		}
 
-		roomRes := createRoom(ctx, crReq, senderDevice, cfgClient, userAPI, rsAPI, asAPI, time.Now())
+		roomRes, _ := createRoom(ctx, crReq, senderDevice, cfgClient, userAPI, rsAPI, asAPI, time.Now())
 
 		switch data := roomRes.JSON.(type) {
 		case createRoomResponse:

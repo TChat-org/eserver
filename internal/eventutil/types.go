@@ -47,6 +47,8 @@ type NotificationData struct {
 type UserProfile struct {
 	AvatarURL   string `json:"avatar_url,omitempty"`
 	DisplayName string `json:"displayname,omitempty"`
+	// AccountType   AccountType `json:"account_type,omitempty"`
+	// ParentAccount string `json:"parent_account,omitempty"`
 }
 
 // WeakBoolean is a type that will Unmarshal to true or false even if the encoded

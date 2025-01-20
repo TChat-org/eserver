@@ -52,6 +52,9 @@ type LoginIdentifier struct {
 	// when type = m.id.thirdparty
 	Medium  string `json:"medium"`
 	Address string `json:"address"`
+
+	AccountType   api.AccountType `json:"account_type"`
+	ParentAccount string          `json:"parent_account"`
 }
 
 // Login represents the shared fields used in all forms of login/sudo endpoints.

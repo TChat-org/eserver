@@ -38,6 +38,8 @@ import (
 	"github.com/element-hq/dendrite/userapi/storage"
 	"github.com/element-hq/dendrite/userapi/storage/tables"
 	userapiUtil "github.com/element-hq/dendrite/userapi/util"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type UserInternalAPI struct {
@@ -208,7 +210,23 @@ func (a *UserInternalAPI) PerformAccountCreation(ctx context.Context, req *api.P
 	if !a.Config.Matrix.IsLocalServerName(serverName) {
 		return fmt.Errorf("server name %s is not local", serverName)
 	}
-	acc, err := a.DB.CreateAccount(ctx, req.Localpart, serverName, req.Password, req.AppServiceID, req.AccountType)
+
+	logger := util.GetLogger(ctx)
+	logger.WithFields(log.Fields{
+		"req.Localpart":     req.Localpart,
+		"serverName":        serverName,
+		"req.Password":      req.Password,
+		"req.AppServiceID":  req.AppServiceID,
+		"req.AccountType":   req.AccountType,
+		"req.ParentAccount": req.ParentAccount,
+	}).Info("[completeRegistration] called")
+
+	acc, err := a.DB.CreateAccount(ctx, req.Localpart, serverName, req.Password, req.AppServiceID, req.AccountType, req.ParentAccount)
+
+	logger.WithFields(log.Fields{
+		"err": err,
+	}).Info("[completeRegistration] ")
+
 	if err != nil {
 		if errors.Is(err, sqlutil.ErrUserExists) { // This account already exists
 			switch req.OnConflict {
@@ -223,11 +241,12 @@ func (a *UserInternalAPI) PerformAccountCreation(ctx context.Context, req *api.P
 		// account already exists
 		res.AccountCreated = false
 		res.Account = &api.Account{
-			AppServiceID: req.AppServiceID,
-			Localpart:    req.Localpart,
-			ServerName:   serverName,
-			UserID:       fmt.Sprintf("@%s:%s", req.Localpart, serverName),
-			AccountType:  req.AccountType,
+			AppServiceID:  req.AppServiceID,
+			Localpart:     req.Localpart,
+			ServerName:    serverName,
+			UserID:        fmt.Sprintf("@%s:%s", req.Localpart, serverName),
+			AccountType:   req.AccountType,
+			ParentAccount: req.ParentAccount,
 		}
 		return nil
 	}
@@ -585,6 +604,7 @@ func (a *UserInternalAPI) QueryAccessToken(ctx context.Context, req *api.QueryAc
 		return err
 	}
 	device.AccountType = acc.AccountType
+	device.ParentAccount = acc.ParentAccount
 	res.Device = device
 	return nil
 }

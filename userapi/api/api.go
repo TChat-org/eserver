@@ -21,6 +21,7 @@ import (
 
 	clientapi "github.com/element-hq/dendrite/clientapi/api"
 	"github.com/element-hq/dendrite/clientapi/auth/authtypes"
+	// "github.com/element-hq/dendrite/clientapi/auth/authtypes"
 	"github.com/element-hq/dendrite/internal/pushrules"
 )
 
@@ -316,9 +317,10 @@ type PerformAccountCreationRequest struct {
 	Localpart   string          // Required: The localpart for this account. Ignored if account type is guest.
 	ServerName  spec.ServerName // optional: if not specified, default server name used instead
 
-	AppServiceID string // optional: the application service ID (not user ID) creating this account, if any.
-	Password     string // optional: if missing then this account will be a passwordless account
-	OnConflict   Conflict
+	AppServiceID  string // optional: the application service ID (not user ID) creating this account, if any.
+	Password      string // optional: if missing then this account will be a passwordless account
+	ParentAccount string // optional: if missing then this account is permanent user
+	OnConflict    Conflict
 }
 
 // PerformAccountCreationResponse is the response for PerformAccountCreation
@@ -432,8 +434,9 @@ type Device struct {
 	UserAgent   string
 	// If the device is for an appservice user,
 	// this is the appservice ID.
-	AppserviceID string
-	AccountType  AccountType
+	AppserviceID  string
+	AccountType   AccountType
+	ParentAccount string
 }
 
 func (d *Device) UserDomain() spec.ServerName {
@@ -450,11 +453,12 @@ func (d *Device) UserDomain() spec.ServerName {
 
 // Account represents a Matrix account on this home server.
 type Account struct {
-	UserID       string
-	Localpart    string
-	ServerName   spec.ServerName
-	AppServiceID string
-	AccountType  AccountType
+	UserID        string
+	Localpart     string
+	ServerName    spec.ServerName
+	AppServiceID  string
+	AccountType   AccountType
+	ParentAccount string
 	// TODO: Associations (e.g. with application services)
 }
 
@@ -514,6 +518,7 @@ const (
 	AccountTypeAdmin AccountType = 3
 	// AccountTypeAppService indicates this is an appservice account
 	AccountTypeAppService AccountType = 4
+	AccountTypeTempUser   AccountType = 5
 )
 
 type QueryPushersRequest struct {

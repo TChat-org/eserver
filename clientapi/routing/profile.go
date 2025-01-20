@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/matrix-org/gomatrix"
 	"github.com/matrix-org/gomatrixserverlib"
 	"github.com/matrix-org/gomatrixserverlib/fclient"
 	"github.com/matrix-org/gomatrixserverlib/spec"
@@ -24,17 +25,34 @@ import (
 	"github.com/element-hq/dendrite/roomserver/types"
 	"github.com/element-hq/dendrite/setup/config"
 	userapi "github.com/element-hq/dendrite/userapi/api"
-	"github.com/matrix-org/gomatrix"
 	"github.com/matrix-org/util"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // GetProfile implements GET /profile/{userID}
 func GetProfile(
-	req *http.Request, profileAPI userapi.ProfileAPI, cfg *config.ClientAPI,
+	req *http.Request,
+	device *userapi.Device,
+	profileAPI userapi.ProfileAPI, cfg *config.ClientAPI,
 	userID string,
 	asAPI appserviceAPI.AppServiceInternalAPI,
 	federation fclient.FederationClient,
 ) util.JSONResponse {
+	logger := util.GetLogger(req.Context())
+	logger.WithFields(log.Fields{
+		"userID":        userID,
+		"device.UserID": device.UserID,
+	}).Info("[GetProfile] called")
+
+	// neu la temp user thi chi duoc tim thay chinh no hoac parent_account cua no
+	if device.AccountType == userapi.AccountTypeTempUser && device.UserID != userID && device.ParentAccount != userID {
+		return util.JSONResponse{
+			Code: http.StatusForbidden,
+			JSON: spec.NotJSON("This account type cannot perform this action"),
+		}
+	}
+
 	profile, err := getProfile(req.Context(), profileAPI, cfg, userID, asAPI, federation)
 	if err != nil {
 		if err == appserviceAPI.ErrProfileNotExists {
@@ -51,22 +69,36 @@ func GetProfile(
 		}
 	}
 
+	if device.UserID != userID {
+		return util.JSONResponse{
+			Code: http.StatusOK,
+			JSON: eventutil.UserProfile{
+				AvatarURL:   profile.AvatarURL,
+				DisplayName: profile.DisplayName,
+			},
+		}
+	}
+
 	return util.JSONResponse{
 		Code: http.StatusOK,
 		JSON: eventutil.UserProfile{
 			AvatarURL:   profile.AvatarURL,
 			DisplayName: profile.DisplayName,
+			// AccountType:   profile.AccountType,
+			// ParentAccount: profile.ParentAccount,
 		},
 	}
 }
 
 // GetAvatarURL implements GET /profile/{userID}/avatar_url
 func GetAvatarURL(
-	req *http.Request, profileAPI userapi.ProfileAPI, cfg *config.ClientAPI,
+	req *http.Request,
+	device *userapi.Device,
+	profileAPI userapi.ProfileAPI, cfg *config.ClientAPI,
 	userID string, asAPI appserviceAPI.AppServiceInternalAPI,
 	federation fclient.FederationClient,
 ) util.JSONResponse {
-	profile := GetProfile(req, profileAPI, cfg, userID, asAPI, federation)
+	profile := GetProfile(req, device, profileAPI, cfg, userID, asAPI, federation)
 	p, ok := profile.JSON.(eventutil.UserProfile)
 	// not a profile response, so most likely an error, return that
 	if !ok {
@@ -151,11 +183,13 @@ func SetAvatarURL(
 
 // GetDisplayName implements GET /profile/{userID}/displayname
 func GetDisplayName(
-	req *http.Request, profileAPI userapi.ProfileAPI, cfg *config.ClientAPI,
+	req *http.Request,
+	device *userapi.Device,
+	profileAPI userapi.ProfileAPI, cfg *config.ClientAPI,
 	userID string, asAPI appserviceAPI.AppServiceInternalAPI,
 	federation fclient.FederationClient,
 ) util.JSONResponse {
-	profile := GetProfile(req, profileAPI, cfg, userID, asAPI, federation)
+	profile := GetProfile(req, device, profileAPI, cfg, userID, asAPI, federation)
 	p, ok := profile.JSON.(eventutil.UserProfile)
 	// not a profile response, so most likely an error, return that
 	if !ok {
@@ -312,6 +346,7 @@ func getProfile(
 	asAPI appserviceAPI.AppServiceInternalAPI,
 	federation fclient.FederationClient,
 ) (*authtypes.Profile, error) {
+	//! NOTE: uncomment below for federation
 	localpart, domain, err := gomatrixserverlib.SplitID('@', userID)
 	if err != nil {
 		return nil, err
@@ -333,8 +368,11 @@ func getProfile(
 			Localpart:   localpart,
 			DisplayName: profile.DisplayName,
 			AvatarURL:   profile.AvatarURL,
+			// AccountType:   profile.AccountType,
+			// ParentAccount: profile.ParentAccount,
 		}, nil
 	}
+	//! NOTE: uncomment above for federation
 
 	profile, err := appserviceAPI.RetrieveUserProfile(ctx, userID, asAPI, profileAPI)
 	if err != nil {

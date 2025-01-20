@@ -8,6 +8,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/element-hq/dendrite/clientapi/auth/authtypes"
@@ -32,6 +33,8 @@ func (t *LoginTypeToken) Name() string {
 // LoginFromJSON implements Type. The cleanup function deletes the token from
 // the database on success.
 func (t *LoginTypeToken) LoginFromJSON(ctx context.Context, reqBytes []byte) (*Login, LoginCleanupFunc, *util.JSONResponse) {
+	fmt.Println("[clientapi/auth/login_token.go][LoginFromJSON] called ~~")
+
 	var r loginTokenRequest
 	if err := httputil.UnmarshalJSON(reqBytes, &r); err != nil {
 		return nil, nil, err
@@ -52,8 +55,13 @@ func (t *LoginTypeToken) LoginFromJSON(ctx context.Context, reqBytes []byte) (*L
 		}
 	}
 
+	fmt.Println("[clientapi/auth/login_token.go][LoginFromJSON] res.Data.AccountType = ", res.Data.AccountType)
+	fmt.Println("[clientapi/auth/login_token.go][LoginFromJSON] res.Data.ParentAccount = ", res.Data.ParentAccount)
+
 	r.Login.Identifier.Type = "m.id.user"
 	r.Login.Identifier.User = res.Data.UserID
+	r.Login.Identifier.AccountType = res.Data.AccountType
+	r.Login.Identifier.ParentAccount = res.Data.ParentAccount
 
 	cleanup := func(ctx context.Context, authRes *util.JSONResponse) {
 		if authRes == nil {

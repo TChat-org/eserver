@@ -115,13 +115,15 @@ func CreateRoom(
 		return *resErr
 	}
 	evTime, err := httputil.ParseTSParam(req)
+	fmt.Println("[CreateRoom] evTime = ", evTime)
 	if err != nil {
 		return util.JSONResponse{
 			Code: http.StatusBadRequest,
 			JSON: spec.InvalidParam(err.Error()),
 		}
 	}
-	return createRoom(req.Context(), createRequest, device, cfg, profileAPI, rsAPI, asAPI, evTime)
+	response, _ := createRoom(req.Context(), createRequest, device, cfg, profileAPI, rsAPI, asAPI, evTime)
+	return response
 }
 
 // createRoom implements /createRoom
@@ -132,20 +134,20 @@ func createRoom(
 	profileAPI api.ClientUserAPI, rsAPI roomserverAPI.ClientRoomserverAPI,
 	asAPI appserviceAPI.AppServiceInternalAPI,
 	evTime time.Time,
-) util.JSONResponse {
+) (util.JSONResponse, *string) {
 	userID, err := spec.NewUserID(device.UserID, true)
 	if err != nil {
 		util.GetLogger(ctx).WithError(err).Error("invalid userID")
 		return util.JSONResponse{
 			Code: http.StatusInternalServerError,
 			JSON: spec.InternalServerError{},
-		}
+		}, nil
 	}
 	if !cfg.Matrix.IsLocalServerName(userID.Domain()) {
 		return util.JSONResponse{
 			Code: http.StatusForbidden,
 			JSON: spec.Forbidden(fmt.Sprintf("User domain %q not configured locally", userID.Domain())),
-		}
+		}, nil
 	}
 
 	logger := util.GetLogger(ctx)
@@ -158,7 +160,7 @@ func createRoom(
 		return util.JSONResponse{
 			Code: http.StatusInternalServerError,
 			JSON: spec.InternalServerError{},
-		}
+		}, nil
 	}
 
 	// Clobber keys: creator, room_version
@@ -171,7 +173,7 @@ func createRoom(
 			return util.JSONResponse{
 				Code: http.StatusBadRequest,
 				JSON: spec.UnsupportedRoomVersion(roomVersionError.Error()),
-			}
+			}, nil
 		}
 		roomVersion = candidateVersion
 	}
@@ -188,7 +190,7 @@ func createRoom(
 		return util.JSONResponse{
 			Code: http.StatusInternalServerError,
 			JSON: spec.InternalServerError{},
-		}
+		}, nil
 	}
 
 	userDisplayName := profile.DisplayName
@@ -219,16 +221,18 @@ func createRoom(
 
 	roomAlias, createRes := rsAPI.PerformCreateRoom(ctx, *userID, *roomID, &req)
 	if createRes != nil {
-		return *createRes
+		return *createRes, nil
 	}
 
+	roomIDstr := roomID.String()
+
 	response := createRoomResponse{
-		RoomID:    roomID.String(),
+		RoomID:    roomIDstr,
 		RoomAlias: roomAlias,
 	}
 
 	return util.JSONResponse{
 		Code: 200,
 		JSON: response,
-	}
+	}, &roomIDstr
 }
