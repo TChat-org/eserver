@@ -585,7 +585,7 @@ func CreateAccount(
 	if device.AccountType == userapi.AccountTypeTempUser {
 		return util.JSONResponse{
 			Code: http.StatusForbidden,
-			JSON: spec.NotJSON("This account type cannot perform this action"),
+			JSON: spec.Forbidden("This account type cannot perform this action"),
 		}
 	}
 
@@ -865,7 +865,7 @@ func handleRegistrationFlow(
 	// A response with current registration flow and remaining available methods
 	// will be returned if a flow has not been successfully completed yet
 	return checkAndCompleteFlow(sessions.getCompletedStages(sessionID),
-		req, r, sessionID, cfg, userAPI)
+		req, r, sessionID, cfg, userAPI, accessToken, accessTokenErr)
 }
 
 // handleApplicationServiceRegistration handles the registration of an
@@ -909,6 +909,7 @@ func handleApplicationServiceRegistration(
 		req.Context(), userAPI, r.Username, r.ServerName, "", "", appserviceID, req.RemoteAddr,
 		req.UserAgent(), r.Auth.Session, r.InhibitLogin, r.InitialDisplayName, r.DeviceID,
 		userapi.AccountTypeAppService, "",
+		accessToken, tokenErr,
 	)
 }
 
@@ -922,6 +923,8 @@ func checkAndCompleteFlow(
 	sessionID string,
 	cfg *config.ClientAPI,
 	userAPI userapi.ClientUserAPI,
+	accessToken string,
+	accessTokenErr error,
 ) util.JSONResponse {
 
 	logger := util.GetLogger(req.Context())
@@ -930,6 +933,8 @@ func checkAndCompleteFlow(
 		"auth.type":      r.Auth.Type,
 		"session_id":     r.Auth.Session,
 		"parrentAccount": r.ParentAccount,
+		"accessToken":    accessToken,
+		"accessTokenErr": accessTokenErr,
 	}).Info("[checkAndCompleteFlow] called")
 
 	if checkFlowCompleted(flow, cfg.Derived.Registration.Flows) {
@@ -945,6 +950,7 @@ func checkAndCompleteFlow(
 			req.Context(), userAPI, r.Username, r.ServerName, "", r.Password, "", req.RemoteAddr,
 			req.UserAgent(), sessionID, r.InhibitLogin, r.InitialDisplayName, r.DeviceID,
 			accType, r.ParentAccount,
+			accessToken, accessTokenErr,
 		)
 	}
 	sessions.addParams(sessionID, r)
@@ -972,14 +978,26 @@ func completeRegistration(
 	deviceDisplayName, deviceID *string,
 	accType userapi.AccountType,
 	parentAccount string,
+	accessToken string,
+	accessTokenErr error,
 ) util.JSONResponse {
 	logger := util.GetLogger(ctx)
 	logger.WithFields(log.Fields{
-		"username":      username,
-		"password":      password,
-		"accType":       accType,
-		"parentAccount": parentAccount,
+		"username":       username,
+		"password":       password,
+		"accType":        accType,
+		"parentAccount":  parentAccount,
+		"accessToken":    accessToken,
+		"accessTokenErr": accessTokenErr,
 	}).Info("[completeRegistration] called")
+
+	// cannot extract accessToken => cannot create account (register is disabled, only created account can create a child account)
+	if accessTokenErr != nil {
+		return util.JSONResponse{
+			Code: http.StatusOK,
+			JSON: spec.MissingToken("Registration is disabled. Only created account can create a child account"),
+		}
+	}
 
 	if username == "" {
 		return util.JSONResponse{
@@ -1240,5 +1258,9 @@ func handleSharedSecretRegistration(cfg *config.ClientAPI, userAPI userapi.Clien
 	if ssrr.Admin {
 		accType = userapi.AccountTypeAdmin
 	}
-	return completeRegistration(req.Context(), userAPI, ssrr.User, cfg.Matrix.ServerName, ssrr.DisplayName, ssrr.Password, "", req.RemoteAddr, req.UserAgent(), "", false, &ssrr.User, &deviceID, accType, "")
+	return completeRegistration(
+		req.Context(), userAPI, ssrr.User, cfg.Matrix.ServerName, ssrr.DisplayName, ssrr.Password, "", req.RemoteAddr, req.UserAgent(), "", false, &ssrr.User, &deviceID,
+		accType, "",
+		"", errors.New("no token provided"),
+	)
 }
